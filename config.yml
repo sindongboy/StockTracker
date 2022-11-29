@@ -1,0 +1,13 @@
+
+
+# Korean Bank related
+API_KEY:
+  'JM1DKCYAKDZ97NFRDYHB'
+
+# Naver API related
+stat_info:
+  'news_sentiment':
+    cd: '521Y001'
+    period: 'D'
+    url: 'http://ecos.bok.or.kr/api/StatisticSearch/{}/xml/kr/1/30000/{}/{}/{}/{}/'
+
