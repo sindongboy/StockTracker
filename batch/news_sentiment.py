@@ -4,6 +4,7 @@
 import sys
 import yaml
 
+import time
 from datetime import datetime, timedelta
 
 import requests
@@ -13,8 +14,10 @@ from lxml import html
 from urllib.request import Request, urlopen
 from urllib.parse import urlencode, quote_plus, unquote
 
-from opensearchpy import OpenSearch
-from opensearchpy.helpers import bulk
+# from opensearchpy import OpenSearch
+# from opensearchpy.helpers import bulk
+
+import pymysql as sql
 
 
 #%%
@@ -34,7 +37,9 @@ def get_parsed(row):
     item_cd = row.find('ITEM_CODE1').text
     val = row.find('DATA_VALUE').text
     dt = row.find('TIME').text
-    return stat_cd, item_nm, item_cd, val, dt
+    ts = time.time()
+    timestamp = datetime.fromtimestamp(ts).strftime('%Y-%m-%d %H:%M:%S')
+    return stat_cd, item_nm, item_cd, float(val), dt, timestamp
 
 
 def get_news_sentiment(start_dt, end_dt):
@@ -61,59 +66,54 @@ def get_news_sentiment(start_dt, end_dt):
     else:
         return []
 
-#%% -- OpenSearch: Indexing Result 
-host = 'localhost'
-port = 9200
-auth = ('admin', 'admin')
 
-# Create the client with SSL/TLS enabled, but hostname verification disabled.
-client = OpenSearch(
-    hosts = [{'host': host, 'port': port}],
-    http_compress = True, # enables gzip compression for request bodies
-    http_auth = auth,
-    # client_cert = client_cert_path,
-    # client_key = client_key_path,
+def insert_single(row):
+    dt = row[4]
+    new_val = row[3]
+
+    query = "SELECT * FROM `news_sentiment` WHERE dt = %s limit 1;"
+    cursor.execute(query, dt)
+    fetched = cursor.fetchall()
+    if len(fetched):
+        # update entry if value changed, otherwise skip the update
+        prev_val = fetched[0]['sentiment']
+        if prev_val != new_val:
+            # delete previous entry
+            query = "DELETE FROM `news_sentiment` WHERE dt = %s"
+            cursor.execute(query, dt)
+            db.commit()
+
+            # insert new entry (update)
+            query = "INSERT INTO `news_sentiment`(stat_cd, stat_nm, item_cd, sentiment, dt, ts) \
+                VALUES (%s, %s, %s, %s, %s, %s);"
+            cursor.execute(query, row)
+            db.commit()
+    else:
+        # new entry
+        query = "INSERT INTO `news_sentiment`(stat_cd, stat_nm, item_cd, sentiment, dt, ts) \
+            VALUES (%s, %s, %s, %s, %s, %s);"
+        cursor.execute(query, row)
+        db.commit()
+
+
+def insert_bulk(rows):
+    for row in rows:
+        insert_single(row)
+
+
+# %%
+db = sql.connect(
+    user='root', 
+    passwd='1111', 
+    host='127.0.0.1', 
+    db='stock_tracker', 
+    charset='utf8'
 )
+cursor = db.cursor(sql.cursors.DictCursor)
 
-
-#%%
-# Create an index with non-default settings.
-if client.indices.exists('news_sentiment') == False:
-    response = client.indices.create('news_sentiment', body={
-        'settings': {
-            'index': {
-                'number_of_shards': 4
-            }
-        }
-    })
-else:
-    print('index already exists')
-
-#%%
 rows = get_news_sentiment(start_dt=start_dt, end_dt=end_dt)
+insert_bulk(rows)
 
-#%%
-bulk_data = []
-x = 0
-for row in rows:
-    doc_id = '_'.join([row[4], row[3]])
-    if client.exists(index='news_sentiment', id=doc_id):
-        print('document exists: {}'.format(doc_id))
-        continue
-    bulk_data.append(
-        {
-            "_index": "news_sentiment",
-            "_id": '_'.join([row[4], row[3]]),
-            "_source": {        
-                'stat_cd': row[0],
-                'stat_nm': row[1], 
-                'item_cd': row[2], 
-                'sentiment': float(row[3]),
-                'dt': row[4]
-            }
-        }
-    )
-    print('document count: {}'.format(x))
-    x += 1
-
-bulk(client, bulk_data)
+cursor.close()
+db.close()
+# %%
