@@ -1,5 +1,5 @@
 
-
+logger_config_path: "/Users/sindongboy/Documents/workspace/stock_tracker/logger.conf"
 # Korean Bank related
 API_KEY:
   'JM1DKCYAKDZ97NFRDYHB'
