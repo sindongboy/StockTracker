@@ -6,7 +6,7 @@ import logging
 from logging import handlers, config
 
 import yaml
-import pymysql as sql
+import pymysql
 from index import *
 
 #%%
@@ -14,14 +14,15 @@ from index import *
 Logging (code)
 """
 with open(sys.argv[1], 'r') as f:
-    config = yaml.load(f, Loader=yaml.FullLoader)
+    cfg = yaml.load(f, Loader=yaml.FullLoader)
 
-logging.config.fileConfig(config['logger_config_path'])
+config.fileConfig(cfg['logger_config_path'])
 logger = logging.getLogger()
 
 
 #%%
 batch_type = sys.argv[2]
+target_dt = None
 if batch_type == "d":
     target_dt = sys.argv[3]
     logger.info('Daily batch mode - (target_dt: {})'.format(target_dt))
@@ -36,14 +37,14 @@ else:
 # target_dt = '20221101'
 # logger.error('target_dt: {}'.format(target_dt))
 #%%
-db = sql.connect(
+db = pymysql.connect(
     user='root', 
     passwd='1111', 
     host='127.0.0.1', 
     db='stock_tracker', 
     charset='utf8'
 )
-cursor = db.cursor(sql.cursors.DictCursor)
+cursor = db.cursor(pymysql.cursors.DictCursor)
 
 
 def insert_single(row):
